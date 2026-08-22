@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Device Broadcaster</title>
+  <title>Persistent Device Broadcaster</title>
   <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -17,43 +17,71 @@
       background: #0f172a;
       color: #fff;
     }
+    .card {
+      background: #1e293b;
+      padding: 2rem;
+      border-radius: 12px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+      border: 1px solid #334155;
+    }
     button {
-      padding: 14px 28px;
-      font-size: 1.1rem;
+      width: 100%;
+      padding: 14px 20px;
+      font-size: 1rem;
       font-weight: 600;
-      background: #2563eb;
-      color: white;
       border: none;
       border-radius: 8px;
       cursor: pointer;
-      margin-top: 1.5rem;
+      margin-top: 1rem;
+      transition: background 0.2s ease;
+    }
+    .btn-start {
+      background: #2563eb;
+      color: white;
       box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
     }
+    .btn-stop {
+      background: #dc2626;
+      color: white;
+      margin-top: 0.5rem;
+    }
     #status {
-      margin-top: 1.5rem;
-      font-size: 0.95rem;
+      margin-top: 1.25rem;
+      font-size: 0.9rem;
       color: #94a3b8;
     }
     .badge {
-      display: inline-block;
-      padding: 6px 12px;
-      border-radius: 4px;
-      background: #1e293b;
+      display: block;
+      padding: 8px 12px;
+      border-radius: 6px;
+      background: #0f172a;
       font-family: monospace;
+      font-size: 0.85rem;
       margin-top: 0.75rem;
       border: 1px solid #334155;
+      color: #38bdf8;
+      word-break: break-all;
     }
   </style>
 </head>
 <body>
 
-  <h2>Live GPS Broadcaster</h2>
-  <p>Tap below and grant location permission to broadcast telemetry.</p>
-  <button id="btn">📡 Start Sharing Live Location</button>
-  <div id="status">Status: Ready</div>
-  <div id="telemetry" class="badge">Telemetry: --</div>
+  <div class="card">
+    <h2>Persistent GPS Beacon</h2>
+    <p style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;">
+      Once activated, tracking starts automatically on every page open.
+    </p>
 
-  <!-- Firebase v8 SDK -->
+    <button id="start-btn" class="btn-start">📡 Enable Permanent Tracking</button>
+    <button id="stop-btn" class="btn-stop" style="display: none;">🛑 Stop Tracking</button>
+
+    <div id="status">Status: Initializing...</div>
+    <div id="telemetry" class="badge">Telemetry: Waiting for fix...</div>
+  </div>
+
+  <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
@@ -71,34 +99,47 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const btn = document.getElementById('btn');
+    const startBtn = document.getElementById('start-btn');
+    const stopBtn = document.getElementById('stop-btn');
     const statusText = document.getElementById('status');
     const telemetryText = document.getElementById('telemetry');
 
-    btn.addEventListener('click', () => {
+    let watchId = null;
+
+    function startBroadcasting() {
       if (!navigator.geolocation) {
-        statusText.innerText = "Error: Geolocation not supported on this browser.";
+        statusText.innerText = "Error: Geolocation not supported.";
         return;
       }
 
-      statusText.innerText = "Requesting GPS permissions...";
+      // Save preference so it auto-starts permanently
+      localStorage.setItem('auto_track_enabled', 'true');
 
-      navigator.geolocation.watchPosition(
+      startBtn.style.display = 'none';
+      stopBtn.style.display = 'block';
+      statusText.innerText = "Acquiring high-accuracy GPS fix...";
+
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+
+      watchId = navigator.geolocation.watchPosition(
         (pos) => {
           const payload = {
             lat: pos.coords.latitude,
             lng: pos.coords.longitude,
             accuracy: Math.round(pos.coords.accuracy),
-            timestamp: new Date().toLocaleTimeString()
+            timestamp: new Date().toLocaleTimeString(),
+            speed: pos.coords.speed ? (pos.coords.speed * 3.6).toFixed(1) + " km/h" : "0 km/h"
           };
 
           db.ref('live_session/device_1').set(payload)
             .then(() => {
-              statusText.innerText = "Status: 🟢 Streaming live telemetry to cloud";
+              statusText.innerHTML = "Status: <span style='color: #4ade80;'>🟢 Live & Streaming</span>";
               telemetryText.innerText = `Lat: ${payload.lat.toFixed(5)}, Lng: ${payload.lng.toFixed(5)} (±${payload.accuracy}m)`;
             })
             .catch((err) => {
-              statusText.innerText = `Database Error: ${err.message}`;
+              statusText.innerText = `Sync Error: ${err.message}`;
             });
         },
         (err) => {
@@ -106,6 +147,30 @@
         },
         { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
       );
+    }
+
+    function stopBroadcasting() {
+      localStorage.removeItem('auto_track_enabled');
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      startBtn.style.display = 'block';
+      stopBtn.style.display = 'none';
+      statusText.innerText = "Status: Tracking Paused";
+      telemetryText.innerText = "Telemetry: Stopped";
+    }
+
+    startBtn.addEventListener('click', startBroadcasting);
+    stopBtn.addEventListener('click', stopBroadcasting);
+
+    // Auto-resume check on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      if (localStorage.getItem('auto_track_enabled') === 'true') {
+        startBroadcasting();
+      } else {
+        statusText.innerText = "Status: Ready to track";
+      }
     });
   </script>
 </body>
