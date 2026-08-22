@@ -2,23 +2,58 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Live Map Dashboard</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    body { margin: 0; display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; }
-    #header { padding: 1rem; background: #0f172a; color: white; display: flex; justify-content: space-between; }
-    #map { flex: 1; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+    body { display: flex; flex-direction: column; height: 100vh; }
+    #header {
+      background: #0f172a;
+      color: white;
+      padding: 0.8rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9rem;
+    }
+    #map { flex: 1; width: 100%; }
+    .gmaps-link {
+      color: #60a5fa;
+      text-decoration: none;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
+
   <div id="header">
-    <strong>Remote Telemetry Monitor</strong>
-    <span id="telemetry-info">Waiting for incoming telemetry...</span>
+    <strong>📡 Remote Live Telemetry Dashboard</strong>
+    <span id="info">Waiting for incoming device stream...</span>
   </div>
+
   <div id="map"></div>
 
+  <!-- Leaflet & Firebase SDK -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
   <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDk1RS3Zn_fBpnA0uCoEFwb6aHcFcquRiE",
+      authDomain: "live-tracker-9618d.firebaseapp.com",
+      databaseURL: "https://live-tracker-9618d-default-rtdb.firebaseio.com",
+      projectId: "live-tracker-9618d",
+      storageBucket: "live-tracker-9618d.firebasestorage.app",
+      messagingSenderId: "157274601724",
+      appId: "1:157274601724:web:efbde222f2e4ed47a2ff79"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // Leaflet Map Init
     const map = L.map('map').setView([20.5937, 78.9629], 5);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -27,25 +62,33 @@
 
     let marker = null;
     let circle = null;
-    const telemetryInfo = document.getElementById('telemetry-info');
+    const infoText = document.getElementById('info');
 
-    const socket = new WebSocket('ws://localhost:8080');
+    // Realtime Database Listener
+    db.ref('live_session/device_1').on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
 
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
       const { lat, lng, accuracy, timestamp } = data;
+      const gmapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
 
-      telemetryInfo.innerText = `Last Ping: ${timestamp} \vert{} Lat:${lat.toFixed(5)}, Lng: ${lng.toFixed(5)} (±${Math.round(accuracy)}m)`;
+      infoText.innerHTML = `Last Ping: ${timestamp} | ±${accuracy}m | <a class="gmaps-link" href="${gmapsUrl}" target="_blank">📍 Open in Google Maps</a>`;
 
       if (marker) map.removeLayer(marker);
       if (circle) map.removeLayer(circle);
 
       marker = L.marker([lat, lng]).addTo(map);
-      marker.bindPopup(`<b>Target Device</b><br>Updated: ${timestamp}`).openPopup();
-      circle = L.circle([lat, lng], { radius: accuracy, color: '#2563eb' }).addTo(map);
+      marker.bindPopup(`
+        <div style="text-align:center; padding: 4px;">
+          <b>Remote Device</b><br/>
+          <span>Ping: ${timestamp}</span><br/>
+          <a href="${gmapsUrl}" target="_blank" style="color:#2563eb;font-weight:600;display:inline-block;margin-top:4px;">📍 Open in Google Maps</a>
+        </div>
+      `).openPopup();
 
+      circle = L.circle([lat, lng], { radius: accuracy, color: '#2563eb', fillOpacity: 0.15 }).addTo(map);
       map.setView([lat, lng], 16);
-    };
+    });
   </script>
 </body>
 </html>
