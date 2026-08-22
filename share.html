@@ -2,47 +2,109 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Location Broadcaster</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Device Broadcaster</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 90vh;
+      text-align: center;
+      padding: 1.5rem;
+      background: #0f172a;
+      color: #fff;
+    }
+    button {
+      padding: 14px 28px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 1.5rem;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+    }
+    #status {
+      margin-top: 1.5rem;
+      font-size: 0.95rem;
+      color: #94a3b8;
+    }
+    .badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 4px;
+      background: #1e293b;
+      font-family: monospace;
+      margin-top: 0.75rem;
+      border: 1px solid #334155;
+    }
+  </style>
 </head>
-<body style="font-family: sans-serif; padding: 2rem; text-align: center;">
-  <h2>Device Telemetry Broadcaster</h2>
-  <p id="status">Status: Disconnected</p>
-  <button id="start-btn" style="padding: 10px 20px; font-size: 1rem; cursor: pointer;">
-    Share My Live Location
-  </button>
+<body>
+
+  <h2>Live GPS Broadcaster</h2>
+  <p>Tap below and grant location permission to broadcast telemetry.</p>
+  <button id="btn">📡 Start Sharing Live Location</button>
+  <div id="status">Status: Ready</div>
+  <div id="telemetry" class="badge">Telemetry: --</div>
+
+  <!-- Firebase v8 SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
   <script>
-    const socket = new WebSocket('ws://localhost:8080');
+    const firebaseConfig = {
+      apiKey: "AIzaSyDk1RS3Zn_fBpnA0uCoEFwb6aHcFcquRiE",
+      authDomain: "live-tracker-9618d.firebaseapp.com",
+      databaseURL: "https://live-tracker-9618d-default-rtdb.firebaseio.com",
+      projectId: "live-tracker-9618d",
+      storageBucket: "live-tracker-9618d.firebasestorage.app",
+      messagingSenderId: "157274601724",
+      appId: "1:157274601724:web:efbde222f2e4ed47a2ff79"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const btn = document.getElementById('btn');
     const statusText = document.getElementById('status');
-    const startBtn = document.getElementById('start-btn');
+    const telemetryText = document.getElementById('telemetry');
 
-    socket.onopen = () => { statusText.innerText = 'Status: Connected to Server'; };
-
-    startBtn.addEventListener('click', () => {
+    btn.addEventListener('click', () => {
       if (!navigator.geolocation) {
-        alert('Geolocation not supported by this browser.');
+        statusText.innerText = "Error: Geolocation not supported on this browser.";
         return;
       }
 
-      statusText.innerText = 'Status: Streaming GPS data...';
+      statusText.innerText = "Requesting GPS permissions...";
 
       navigator.geolocation.watchPosition(
-        (position) => {
-          const payload = JSON.stringify({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-            accuracy: position.coords.accuracy,
+        (pos) => {
+          const payload = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: Math.round(pos.coords.accuracy),
             timestamp: new Date().toLocaleTimeString()
-          });
+          };
 
-          if (socket.readyState === WebSocket.OPEN) {
-            socket.send(payload);
-          }
+          db.ref('live_session/device_1').set(payload)
+            .then(() => {
+              statusText.innerText = "Status: 🟢 Streaming live telemetry to cloud";
+              telemetryText.innerText = `Lat: ${payload.lat.toFixed(5)}, Lng: ${payload.lng.toFixed(5)} (±${payload.accuracy}m)`;
+            })
+            .catch((err) => {
+              statusText.innerText = `Database Error: ${err.message}`;
+            });
         },
-        (error) => {
-          statusText.innerText = `Error: ${error.message}`;
+        (err) => {
+          statusText.innerText = `GPS Error: ${err.message}`;
         },
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
       );
     });
   </script>
